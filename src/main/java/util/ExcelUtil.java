@@ -15,22 +15,20 @@ public class ExcelUtil {
         List<File> excelFileList = new ArrayList<>();
         //1.获取当前项目所在目录
         String projectPath = projectPath();
-        System.out.println("文件目录：" + projectPath);
         if (projectPath != null) {
             //2.扫描该目录下的所有excel文件
             File fileDirectory = new File(projectPath);
             if (fileDirectory.isDirectory()) {
                 File[] fileArray = fileDirectory.listFiles();
                 if (fileArray != null) {
-                    System.out.println("文件数量：" + fileArray.length);
                     for (File file : fileArray) {
                         if (!file.isDirectory()) {
-                            if ((file.getName().toUpperCase().endsWith("XLS")) || file.getName().toUpperCase().endsWith("XLSX")) {
+                            if (((file.getName().toUpperCase().endsWith("XLS")) || file.getName().toUpperCase().endsWith("XLSX")) && !file.getName().contains("已处理")) {
                                 excelFileList.add(file);
                             }
                         }
                     }
-                    System.out.println("excel文件数量：" + excelFileList.size());
+                    System.out.println("需要处理excel文件数量：" + excelFileList.size());
                 }
             }
         }
