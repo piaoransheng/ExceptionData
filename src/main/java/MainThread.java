@@ -1,20 +1,16 @@
-package deal;
-
-import bill.QueryStationDetailBillDetailPageVO;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
-import util.ExcelUtil;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.text.DecimalFormat;
 import java.text.NumberFormat;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,7 +37,7 @@ public class MainThread {
 
 
                 //3.读取excel数据
-                QueryStationDetailBillDetailPageVO headRowData;
+                QueryStationDetailBillDetailPageVO headRowData = new QueryStationDetailBillDetailPageVO();
                 List<QueryStationDetailBillDetailPageVO> billDetailList = new ArrayList<>();
                 int lastRowNum;
                 if (workbook != null && workbook.getSheet("异常数据") == null) {
@@ -50,7 +46,6 @@ public class MainThread {
                         //列表表头
                         Row headRow = sheet.getRow(5);
                         headRowData = listRowData(headRow);
-                        billDetailList.add(headRowData);
                         //列表数据
                         lastRowNum = sheet.getLastRowNum();
                         if (lastRowNum >= 8) {
@@ -63,13 +58,18 @@ public class MainThread {
                     }
                 }
 
-                //4.创建异常数据sheet并写入
+                //4.获取异常数据
+                List<QueryStationDetailBillDetailPageVO> exceptionList = exceptionList(billDetailList);
+                //加上表头数据
+                exceptionList.add(0, headRowData);
+
+                //5.创建异常数据sheet并写入
                 try {
                     fileOutputStream = new FileOutputStream(file);   //文件输入流对象
                     if (workbook != null && workbook.getSheet("异常数据") == null) {
                         Sheet sheet = workbook.createSheet("异常数据");
-                        for (int i = 0; i <= billDetailList.size() - 1; i++) {
-                            QueryStationDetailBillDetailPageVO billDetailVO = billDetailList.get(i);
+                        for (int i = 0; i <= exceptionList.size() - 1; i++) {
+                            QueryStationDetailBillDetailPageVO billDetailVO = exceptionList.get(i);
                             Row row = sheet.createRow(i);
                             setListRowData(row, billDetailVO);
                         }
@@ -80,7 +80,7 @@ public class MainThread {
                     e.printStackTrace();
                 }
 
-                //5.关闭流
+                //6.关闭流
                 try {
                     if (fileInputStream != null) {
                         fileInputStream.close();
@@ -96,12 +96,14 @@ public class MainThread {
                     e.printStackTrace();
                 }
 
-                //6.文件重命名
+                //7.文件重命名
                 String prePath = file.getAbsolutePath().substring(0, file.getAbsolutePath().lastIndexOf("."));   //不带后缀的文件名
                 String sufPathWithD = file.getName().substring(file.getName().lastIndexOf("."));  //带.的后缀名
                 String newFilePath = prePath + "(已处理)" + sufPathWithD;
                 boolean b = file.renameTo(new File(newFilePath));
-                System.out.println("文件重命名结果：" + b);
+                if (!b) {
+                    System.out.println("文件重命名结果：错误");
+                }
 
             }
         }
@@ -128,7 +130,9 @@ public class MainThread {
         if (row.getCell(8) != null) {
             detailBillDetailPageVO.setCircuit(row.getCell(8).toString());
         }
-        detailBillDetailPageVO.setPhone(row.getCell(9).toString());
+        if (row.getCell(9) != null) {
+            detailBillDetailPageVO.setPhone(row.getCell(9).toString());
+        }
         detailBillDetailPageVO.setStartDate(row.getCell(10).toString());
         detailBillDetailPageVO.setEndDate(row.getCell(11).toString());
         detailBillDetailPageVO.setRealAmount(row.getCell(12).toString());
@@ -225,6 +229,7 @@ public class MainThread {
         row.createCell(45).setCellValue(billDetailVO.getEbbElectricFee());
         row.createCell(46).setCellValue(billDetailVO.getEbbTotalFee());
         row.createCell(47).setCellValue(billDetailVO.getEbbChargingTime());
+        row.createCell(48).setCellValue(billDetailVO.getExceptionReason());
     }
 
     /**
@@ -238,15 +243,41 @@ public class MainThread {
      *
      * @param billDetailList 订单集合
      */
-    private static void selectList(List<QueryStationDetailBillDetailPageVO> billDetailList) {
-        for (int i = billDetailList.size() - 1; i >= 1; i--) {
-            QueryStationDetailBillDetailPageVO rowData = billDetailList.get(i);
-            //1.soc为空的或者0的
-            if (rowData.getStartSoc() != null && !rowData.getStartSoc().equals("0") && rowData.getEndSoc() != null && !rowData.getEndSoc().equals("0")) {
-                billDetailList.remove(i);
-                //2.soc差距大但是充电量小
+    private static List<QueryStationDetailBillDetailPageVO> exceptionList(List<QueryStationDetailBillDetailPageVO> billDetailList) {
+        List<QueryStationDetailBillDetailPageVO> exceptionList = new ArrayList<>();
+        if (billDetailList != null && billDetailList.size() >= 1) {
+            //排序
+            String[] sortNameArr = {"startDate", "endDate", "realAmount"};
+            boolean[] isAscArr = {true, false, true};
+            ExcelUtil.sort(billDetailList, sortNameArr, isAscArr);
+
+            for (int i = billDetailList.size() - 1; i >= 0; i--) {
+                QueryStationDetailBillDetailPageVO rowData = billDetailList.get(i);
+                //1.soc为空的或者0的
+                if (rowData.getStartSoc().equals("null") || rowData.getEndSoc().equals("null") || rowData.getStartSoc().equals("0.0") || rowData.getEndSoc().equals("0.0") || rowData.getStartSoc().equals("0") || rowData.getEndSoc().equals("0")) {
+                    rowData.setExceptionReason("soc为空的或者0的");
+                    exceptionList.add(rowData);
+                } else if (comparePrecent(rowData.getEndSoc(), rowData.getStartSoc()) * 100 >= 30 && Double.parseDouble(rowData.getRealElectric()) <= 1) {
+                    //2.soc差距大但是充电量小
+                    rowData.setExceptionReason("soc差距大但是充电量小");
+                    exceptionList.add(rowData);
+                } else if ((Double.parseDouble(rowData.getTipElectric()) + Double.parseDouble(rowData.getPeakElectric()) + Double.parseDouble(rowData.getFlatElectric()) + Double.parseDouble(rowData.getEbbElectric())) != Double.parseDouble(rowData.getRealElectric())) {
+                    //4.峰平谷费用跟总量对不上的
+                    rowData.setExceptionReason("峰平谷电量跟总量对不上的");
+                    exceptionList.add(rowData);
+                } else if (billDetailList.size() >= 2 && i >= 1) {
+                    //5.订单开始时间结束时间充电费一样的
+                    if (rowData.getStartDate().equals(billDetailList.get(i - 1).getStartDate()) &&
+                            rowData.getEndDate().equals(billDetailList.get(i - 1).getEndDate()) &&
+                            rowData.getRealAmount().equals(billDetailList.get(i - 1).getRealAmount())
+                    ) {
+                        rowData.setExceptionReason("订单开始时间、结束时间、充电费与" + billDetailList.get(i - 1).getOrderCode() + "一致");
+                        exceptionList.add(rowData);
+                    }
+                }
             }
         }
+        return exceptionList;
     }
 
     /**
@@ -255,16 +286,21 @@ public class MainThread {
      * @param num1 被减数
      * @param num2 减数
      * @return 差
-     * @throws Exception 异常
      */
-    private static double comparePrecent(String num1, String num2) throws Exception {
+    private static double comparePrecent(String num1, String num2) {
         //接受字符串类型的百分数
         NumberFormat nf = NumberFormat.getPercentInstance();
         //将double类型的量转化为字符串输出
-        DecimalFormat df = new DecimalFormat("0%");
+//        DecimalFormat df = new DecimalFormat("0%");
         //用NumberFormat的parse方法和doubleValue方法将字符串百分数转换为double类型的可计算数值
         //再将double转为String输出
 //        String result = df.format(compare);
-        return nf.parse(num1).doubleValue() - nf.parse(num2).doubleValue();
+        try {
+            return nf.parse(num1).doubleValue() - nf.parse(num2).doubleValue();
+        } catch (ParseException e) {
+            return 2;
+        }
     }
+
+
 }

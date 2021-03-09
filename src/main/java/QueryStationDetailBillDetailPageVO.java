@@ -1,6 +1,3 @@
-package bill;
-
-
 public class QueryStationDetailBillDetailPageVO {
     /**
      * 订单号
@@ -196,6 +193,10 @@ public class QueryStationDetailBillDetailPageVO {
      * 谷充电时长（分钟）
      */
     private String ebbChargingTime;
+    /**
+     * 异常原因
+     */
+    private String exceptionReason;
 
     public String getOrderCode() {
         return orderCode;
@@ -579,5 +580,13 @@ public class QueryStationDetailBillDetailPageVO {
 
     public void setEbbChargingTime(String ebbChargingTime) {
         this.ebbChargingTime = ebbChargingTime;
+    }
+
+    public String getExceptionReason() {
+        return exceptionReason;
+    }
+
+    public void setExceptionReason(String exceptionReason) {
+        this.exceptionReason = exceptionReason;
     }
 }
